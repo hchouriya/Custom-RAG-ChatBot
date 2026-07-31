@@ -1,0 +1,56 @@
+# ── Secrets: never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+
+# ── Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+
+# ── Node / Next.js
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+
+# ── Generated artifacts
+frontend/src/shared/api/types.gen.ts
+backend/openapi.json
+evals/reports/*
+!evals/reports/.gitkeep
+
+# ── Local infrastructure state
+infra/data/
+infra/certs/
+*.sqlite3
+
+# ── Editors / OS
+.vscode/*
+!.vscode/settings.json.example
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Uploaded/test artifacts
+uploads/
+tmp/
+*.log

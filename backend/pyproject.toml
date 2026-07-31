@@ -1,0 +1,253 @@
+[project]
+name = "aegis"
+version = "0.2.0"
+description = "Aegis RAG Platform - enterprise retrieval-augmented generation backend"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+
+# Floors, not pins. `uv lock` produces the hash-pinned lockfile that CI and Docker
+# install with `--frozen`; pinning twice means two places to update and one to forget.
+dependencies = [
+    # ── Web
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "python-multipart>=0.0.17",
+    "pydantic[email]>=2.9",
+    "pydantic-settings>=2.6",
+    # ── Persistence
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pgvector>=0.3.6",
+    # ── Cache, queue, storage
+    "redis>=5.2",
+    "arq>=0.26",
+    "aioboto3>=13.2",
+    # ── Security
+    "argon2-cffi>=23.1",
+    "pyjwt[crypto]>=2.10",
+    "pyotp>=2.9",
+    # ── Vector store
+    "qdrant-client>=1.12",
+    # ── HTTP clients for model providers
+    "httpx>=0.27",
+    "tenacity>=9.0",
+    # ── Document parsing (all permissively licensed; see ADR note in rag/parsing/pdf.py)
+    "pypdf>=5.1",
+    "pdfplumber>=0.11",
+    # Rasterises pages for OCR. Chosen over pdf2image because it is a self-contained wheel:
+    # pdf2image shells out to poppler, which is a system package developers on Windows do
+    # not have and containers pay for.
+    "pypdfium2>=4.30",
+    "python-docx>=1.1",
+    "python-pptx>=1.0",
+    "openpyxl>=3.1",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.3",
+    "markdown-it-py>=3.0",
+    "charset-normalizer>=3.4",
+    "filetype>=1.2",
+    # ── Tokenization
+    "tiktoken>=0.8",
+    # ── Observability
+    "structlog>=24.4",
+    "prometheus-client>=0.21",
+    # ── CLI
+    "typer>=0.15",
+]
+
+[project.optional-dependencies]
+# The `tesseract` binary is a system dependency, installed in the API/worker image. Without
+# it, OCR degrades to a warning on the document rather than an ingest failure.
+ocr = ["pytesseract>=0.3.13", "Pillow>=11.0"]
+otel = [
+    "opentelemetry-sdk>=1.28",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.28",
+    "opentelemetry-instrumentation-fastapi>=0.49b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.49b0",
+    "opentelemetry-instrumentation-httpx>=0.49b0",
+]
+lang = ["langdetect>=1.0.9"]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "pytest-randomly>=3.16",
+    "hypothesis>=6.119",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "import-linter>=2.1",
+    "types-beautifulsoup4",
+    "blockbuster>=1.5",
+    "testcontainers[postgres]>=4.8",
+    "locust>=2.32",
+]
+
+[project.scripts]
+aegis = "aegis.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aegis"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Lint
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",      # pycodestyle
+    "F",           # pyflakes
+    "I",           # isort
+    "N",           # pep8-naming
+    "UP",          # pyupgrade
+    "B",           # bugbear
+    "C4",          # comprehensions
+    "DTZ",         # naive datetimes are a bug in a timestamptz system
+    "T20",         # no print()
+    "SIM",         # simplify
+    "TID",         # banned / relative imports
+    "PTH",         # pathlib
+    "ASYNC",       # blocking calls in async defs
+    "S",           # bandit
+    "RUF",
+]
+ignore = [
+    "S101",   # assert: used intentionally in tests and for invariants
+    "B008",   # FastAPI Depends() in defaults is the framework idiom
+    # Stop-word and abbreviation lists are written as a triple-quoted block plus .split() so
+    # they read as prose and diff one word at a time. A list literal of 80 quoted strings is
+    # strictly worse to review.
+    "SIM905",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S311", "PLR2004"]
+# The test harness is the one place that legitimately writes the process environment: it is
+# what a deployment's env file would otherwise supply.
+"tests/conftest.py" = ["TID251"]
+# N811: `from sqlalchemy.dialects.postgresql import UUID as PgUUID` is the conventional
+# alias for dialect types whose names collide with stdlib ones.
+"src/aegis/infrastructure/database/models/*" = ["RUF012", "N811"]
+# N817: the permission matrix is imported as `P` so each role's row fits on one line and
+# the whole table can be read at a glance — which is the point of writing it as a table.
+"src/aegis/domain/policies/permissions.py" = ["N817"]
+# S608: this adapter composes SQL by design. The only interpolated identifier comes from
+# `_table_name`, which rejects anything outside `[a-z][a-z0-9_]{0,47}`, and every value is
+# bound through `to_sql`'s parameter dict. See the module docstring.
+"src/aegis/rag/vector_stores/pgvector.py" = ["S608"]
+# S105/S106: `token_type="guest"` and `"mfa_challenge"` are token *kinds*, not secrets.
+"src/aegis/services/auth.py" = ["S105", "S106"]
+"src/aegis/services/principal.py" = ["S105"]
+"src/aegis/api/**" = ["S105", "S106", "S107"]
+"src/aegis/cli.py" = ["S105", "S106", "S107"]
+"migrations/**" = ["E501"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.getenv".msg = "Read configuration through aegis.core.config.Settings only."
+"os.environ".msg = "Read configuration through aegis.core.config.Settings only."
+
+[tool.ruff.lint.isort]
+known-first-party = ["aegis"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Types
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_reexport = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+warn_return_any = true
+
+# The layers that hold the guarantees are strict. Adapters talk to untyped SDKs
+# and are held to a lower bar deliberately, so that strictness stays credible.
+[[tool.mypy.overrides]]
+module = ["aegis.domain.*", "aegis.services.*", "aegis.core.*"]
+strict = true
+
+[[tool.mypy.overrides]]
+module = [
+    "pdfplumber.*", "pypdf.*", "docx.*", "pptx.*", "openpyxl.*", "filetype.*",
+    "qdrant_client.*", "aioboto3.*", "botocore.*", "arq.*", "pyotp.*",
+    "pytesseract.*", "pypdfium2.*", "tiktoken.*", "pgvector.*", "markdown_it.*",
+    # Optional extras. Absent in a default install by design, and each import site is
+    # already guarded, so mypy must not treat their absence as an error.
+    "opentelemetry.*", "langdetect.*",
+]
+ignore_missing_imports = true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tests
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
+markers = [
+    "integration: requires PostgreSQL/Qdrant/Redis (skipped unless --integration)",
+    "load: locust/k6 scenarios, never run in unit CI",
+    "slow: takes more than a second",
+]
+filterwarnings = ["error::DeprecationWarning:aegis.*"]
+
+[tool.coverage.run]
+source = ["src/aegis"]
+branch = true
+omit = ["*/migrations/*", "*/__main__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@overload",
+]
+fail_under = 80
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Layering — the dependency rule from docs/architecture/02, enforced
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.importlinter]
+root_package = "aegis"
+# Required because the "Domain is pure" contract names third-party packages: without it the
+# graph stops at the package boundary and `from sqlalchemy import ...` inside the domain
+# would go unnoticed, which is the single import the contract exists to catch.
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers point inward only"
+type = "layers"
+layers = [
+    "aegis.api",
+    "aegis.services",
+    "aegis.rag | aegis.agents | aegis.infrastructure",
+    "aegis.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Domain is pure"
+type = "forbidden"
+source_modules = ["aegis.domain"]
+forbidden_modules = [
+    "sqlalchemy", "fastapi", "qdrant_client", "httpx", "redis", "arq", "boto3",
+    "aegis.infrastructure", "aegis.rag", "aegis.api", "aegis.services",
+]
+
+[[tool.importlinter.contracts]]
+name = "Services depend on ports, never adapters"
+type = "forbidden"
+source_modules = ["aegis.services"]
+forbidden_modules = ["aegis.infrastructure", "aegis.api"]

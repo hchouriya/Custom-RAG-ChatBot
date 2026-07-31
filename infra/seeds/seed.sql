@@ -1,0 +1,11 @@
+-- Aegis sample / bootstrap data
+--
+-- Prefer the CLI after migrations (keeps password hashing and ACL seeding in one place):
+--
+--   docker compose exec api aegis seed
+--   # or, with the backend venv active:
+--   aegis seed
+--   aegis create-admin --email admin@example.com --password '<strong-password>'
+--
+-- This file is reserved for raw SQL seeds used by integration tests or offline restores.
+-- Leave empty until a SQL seed path is intentionally added.
