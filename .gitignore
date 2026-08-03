@@ -49,8 +49,3 @@ infra/certs/
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# ── Uploaded/test artifacts
-uploads/
-tmp/
-*.log
